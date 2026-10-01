@@ -12,8 +12,20 @@
 
 ```bash
 pip install -r requirements.txt
-cp .env.example .env   # и впишите свои TELEGRAM_API_ID / TELEGRAM_API_HASH
+cp .env.example .env   # Linux/macOS — и впишите свои TELEGRAM_API_ID / TELEGRAM_API_HASH
 ```
+
+**Windows (cmd):** команда `cp` не существует, используйте `copy`:
+```bat
+copy .env.example .env
+```
+**Windows (PowerShell):**
+```powershell
+Copy-Item .env.example .env    # или: copy .env.example .env (алиас)
+```
+Можно и просто скопировать файл `.env.example` в `.env` вручную в проводнике
+(отключите «Скрывать расширения для зарегистрированных типов файлов»,
+чтобы `.env` не превратился в `.env.txt`).
 
 API_ID и API_HASH получить на https://my.telegram.org → *API development tools*
 (нужен обычный аккаунт Telegram; при первом запуске скрипт попросит войти —
