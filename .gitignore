@@ -12,3 +12,8 @@ venv/
 # Результаты поиска
 results.json
 results.csv
+node_modules/
+.next/
+dist/
+build/
+*.log
