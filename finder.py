@@ -51,9 +51,39 @@ def _normalize(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "").lower()).strip()
 
 
+def _stem(word: str) -> str:
+    """Грубая «морфология»: отбрасываем типичные русские падежные окончания,
+    чтобы «вахтой» совпадало с «вахта», «зарплату» — с «зарплата» и т.п.
+    Работает по принципам подобия, без словарей."""
+    for suf in ("ией", "ами", "ями", "ого", "его", "ому", "ым", "их", "ых",
+                "ую", "юю", "ах", "ях", "ою", "ею", "а", "о", "е", "ы", "и",
+                "у", "ю", "ь", "й"):
+        if len(word) - len(suf) >= 4:  # не укорачиваем короче 4 символов
+            return word[: -len(suf)]
+    return word
+
+
 def _title_matches(title: str, keyword: str) -> bool:
-    """Ключевое слово должно встречаться в названии (как подстрока)."""
-    return _normalize(keyword) in _normalize(title)
+    """Название считается подходящим, если содержит ВСЕ слова из запроса
+    (в любом порядке, регистре и близко к исходной форме).
+
+    Строгая проверка «вся фраза как подстрока» отбрасывала почти всё:
+    Telegram сам ищет по отдельным словам, а каналы редко называются
+    точной копией фразы («работа вахтой с проживанием» ≠ «Вахта | Работа»).
+    """
+    words = [w for w in _normalize(keyword).split(" ") if w]
+    norm_title = _normalize(title)
+    title_words = norm_title.split(" ")
+    for w in words:
+        stem = _stem(w)
+        ok = (
+            w in norm_title                                    # точное вхождение
+            or any(_stem(tw) == stem for tw in title_words)    # та же основа слова
+            or (len(stem) >= 5 and stem in norm_title)         # основа внутри слова
+        )
+        if not ok:
+            return False
+    return True
 
 
 @dataclass
@@ -133,13 +163,11 @@ class Finder:
     async def _resolve_channel(self, username: str):
         """Возвращает объект Channel по username или None."""
         try:
-            r = await self.client(functions.contacts.ResolveUsernameRequest(username))
-        except (UsernameNotOccupiedError, UsernameInvalidError, RPCError):
+            ent = await self.client.get_entity(username)
+        except (UsernameNotOccupiedError, UsernameInvalidError, ChannelPrivateError,
+                ValueError, TypeError, RPCError):
             return None
-        for c in r.chats:
-            if isinstance(c, (types.Channel, types.Chat)):
-                return c
-        return None
+        return ent if isinstance(ent, types.Channel) else None
 
     async def _channel_info(
         self, username: str | None, title_hint: str, keyword: str, peer=None
@@ -182,9 +210,11 @@ class Finder:
     async def _search_contacts(self, keyword: str) -> list[ChatInfo]:
         """contacts.Search — публичные каналы/боты по названию."""
         found: list[ChatInfo] = []
+        # Убираем кавычки и лишние пробелы: в contacts.search они только вредят.
+        q = re.sub(r"\s+", " ", keyword.replace('"', " ")).strip()
         try:
             r = await self.client(
-                functions.contacts.SearchRequest(q=keyword, limit=100, broadcasts=True)
+                functions.contacts.SearchRequest(q=q, limit=100, broadcasts=True)
             )
         except FloodWaitError as e:
             print(f"  FloodWait: ждём {e.seconds} сек...")
@@ -258,12 +288,21 @@ class Finder:
     async def search_keyword(self, keyword: str) -> list[ChatInfo]:
         """Ищет популярные чаты/каналы по одному ключевому слову."""
         seen: dict[str, ChatInfo] = {}
+        raw_count = 0
         for source in (self._search_contacts, self._search_global):
-            for c in await source(keyword):
+            chats = await source(keyword)
+            raw_count += len(chats)
+            for c in chats:
                 key = (c.username or c.title).lower()
                 if key not in seen:
                     seen[key] = c
         res = sorted(seen.values(), key=lambda c: c.subscribers, reverse=True)
+        if not res and raw_count == 0:
+            # Ни один канал не прошёл фильтры — подсказываем, что можно ослабить.
+            print(
+                f"  (нет результатов; пороги: MIN_SUBSCRIBERS="
+                f"{config.MIN_SUBSCRIBERS}, название должно содержать все слова запроса)"
+            )
         return res[: config.RESULTS_PER_KEYWORD]
 
     async def find_all(self, keywords: Iterable[str]) -> list[ChatInfo]:
