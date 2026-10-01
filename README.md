@@ -20,6 +20,30 @@ API_ID и API_HASH получить на https://my.telegram.org → *API develo
 ввести номер телефона и код из Telegram). Сессия сохраняется в файл
 `chat_finder.session`, повторный вход не требуется.
 
+### Как задать api_id / api_hash (3 способа, по убыванию приоритета)
+
+```bash
+# 1. Прямо в командной строке (переменные окружения имеют приоритет над .env)
+TELEGRAM_API_ID=12345678 TELEGRAM_API_HASH=abc123 python main.py "крипта"
+
+# 2. В файле .env (копируется из .env.example, читается автоматически)
+TELEGRAM_API_ID=12345678
+TELEGRAM_API_HASH=abc123
+
+# 3. Экспорт в оболочку
+export TELEGRAM_API_ID=12345678
+export TELEGRAM_API_HASH=abc123
+python main.py "крипта"
+```
+
+Механизм: `config.py` сам читает `.env` (через `os.environ.setdefault`, поэтому
+реальные переменные окружения не перекрываются), а `finder.connect()` передаёт
+`API_ID`/`API_HASH` в `TelegramClient(...)` и вызывает `client.start()`.
+
+⚠️ Если нужен именно вид `python main.py --api_id ... --api_hash ...` — сейчас
+таких флагов нет; используйте способ 1. Флаги можно добавить при желании
+(парсинг уже идёт через `argparse`).
+
 ## Использование
 
 ```bash
