@@ -208,29 +208,43 @@ class Finder:
     # Два источника результатов
     # ------------------------------------------------------------------
     async def _search_contacts(self, keyword: str) -> list[ChatInfo]:
-        """contacts.Search — публичные каналы/боты по названию."""
-        found: list[ChatInfo] = []
-        # Убираем кавычки и лишние пробелы: в contacts.search они только вредят.
-        q = re.sub(r"\s+", " ", keyword.replace('"', " ")).strip()
-        try:
-            r = await self.client(
-                functions.contacts.SearchRequest(q=q, limit=100, broadcasts=True)
-            )
-        except FloodWaitError as e:
-            print(f"  FloodWait: ждём {e.seconds} сек...")
-            await asyncio.sleep(e.seconds + 1)
-            return found
+        """contacts.Search — публичные каналы/боты по названию.
 
-        for c in r.chats:
-            if not isinstance(c, types.Channel):
-                continue
-            title = c.title or ""
-            if not _title_matches(title, keyword):
-                continue
-            uname = getattr(c, "username", None)
-            info = await self._channel_info(uname, title, keyword)
-            if info:
-                found.append(info)
+        ВАЖНО: Telegram возвращает ВСЕ найденные сущности (каналы, ботов,
+        пользователей) в поле `my_results`, а не только «мои контакты» —
+        поэтому фильтр `if not me` выкидывал 100% результатов.
+        Также сервер сам решает, как искать фразу: «работа вахтой» может
+        вернуть мало/ничего, поэтому дополнительно ищем по первому слову.
+        """
+        found: list[ChatInfo] = []
+        queries = [keyword]
+        first_word = keyword.split()[0] if keyword.split() else ""
+        if first_word and first_word.lower() != keyword.lower():
+            queries.append(first_word)
+
+        for q in queries:
+            q = re.sub(r"\s+", " ", q.replace('"', " ")).strip()
+            try:
+                r = await self.client(
+                    functions.contacts.SearchRequest(q=q, limit=200)
+                )
+            except FloodWaitError as e:
+                print(f"  FloodWait: ждём {e.seconds} сек...")
+                await asyncio.sleep(e.seconds + 1)
+                return found
+
+            candidates = list(r.my_results) + list(r.chats)
+            for c in candidates:
+                # Telethon кладёт всё в my_results; берём только каналы/супергруппы
+                if not isinstance(c, types.Channel):
+                    continue
+                title = c.title or ""
+                if not _title_matches(title, keyword):
+                    continue
+                uname = getattr(c, "username", None)
+                info = await self._channel_info(uname, title, keyword)
+                if info:
+                    found.append(info)
         return found
 
     async def _search_global(self, keyword: str) -> list[ChatInfo]:
