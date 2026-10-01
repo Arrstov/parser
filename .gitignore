@@ -1,6 +1,14 @@
-(empty)node_modules/
-.next/
-dist/
-build/
-*.log
-node_modules/
+# Секреты и сессии Telegram — никогда не коммитить!
+.env
+*.session
+*.session-journal
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Результаты поиска
+results.json
+results.csv
