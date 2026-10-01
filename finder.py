@@ -61,11 +61,57 @@ class Finder:
     client: object = None
     results: list[ChatInfo] = field(default_factory=list)
 
+    @staticmethod
+    def _parse_proxy(url: str):
+        """socks5://host:port[/user:pass] | http://host:port -> кортеж для Telethon."""
+        from urllib.parse import urlparse
+
+        from telethon.network import ConnectionTcpMTProxyRandomizedIntermediate
+
+        p = urlparse(url)
+        if p.scheme in ("mtproxy", "socks5mtproxy"):
+            # Формат: mtproxy://host:port:secret — разбираем вручную,
+            # т.к. urlparse не понимает третью часть «порт:секрет».
+            body = url.split("://", 1)[1]
+            parts = body.split(":")
+            if len(parts) == 3 and parts[0] and parts[2]:
+                try:
+                    port = int(parts[1])
+                except ValueError:
+                    return None
+                return (
+                    ConnectionTcpMTProxyRandomizedIntermediate,
+                    (parts[0], port, parts[2]),
+                )
+            return None
+        if p.scheme.startswith("socks5"):
+            kind = "socks5"
+        elif p.scheme.startswith("http"):
+            kind = "http"
+        else:
+            return None
+        host, port = p.hostname, p.port
+        if p.username and p.password:
+            return (kind, (host, port, True, p.username, p.password))
+        return (kind, (host, port))
+
     async def connect(self):
         from telethon import TelegramClient
 
+        kwargs = {}
+        if config.PROXY_URL:
+            proxy = self._parse_proxy(config.PROXY_URL)
+            if proxy is None:
+                raise ValueError(
+                    f"Не удалось разобрать PROXY_URL: {config.PROXY_URL!r}. "
+                    "Ожидается socks5://host:port или http://host:port "
+                    "или mtproxy://host:port:secret"
+                )
+            kwargs["proxy"] = proxy
+            kwargs["connection"] = None  # telethon сам выберет по типу прокси
+
         self.client = TelegramClient(
-            config.SESSION_NAME, config.API_ID, config.API_HASH
+            config.SESSION_NAME, config.API_ID, config.API_HASH, **kwargs
         )
         await self.client.start()
         return self.client

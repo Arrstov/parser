@@ -27,3 +27,8 @@ MIN_SUBSCRIBERS = int(os.getenv("MIN_SUBSCRIBERS", "500"))
 
 # Сколько результатов искать по каждому ключевому слову
 RESULTS_PER_KEYWORD = int(os.getenv("RESULTS_PER_KEYWORD", "50"))
+
+# Прокси для подключения к Telegram (нужен, если сеть блокирует DC).
+# Формат: socks5://127.0.0.1:1080  или  http://127.0.0.1:8888
+# (для PySocks-прокси в telethon это тот же формат, что и в tdl/mtproxy)
+PROXY_URL = os.getenv("PROXY_URL", "").strip()
