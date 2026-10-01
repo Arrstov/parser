@@ -113,7 +113,18 @@ class Finder:
         self.client = TelegramClient(
             config.SESSION_NAME, config.API_ID, config.API_HASH, **kwargs
         )
-        await self.client.start()
+        # client.start() умеет запрашивать Бот-токен, но боты не имеют доступа
+        # к поиску каналов/чатов (contacts.search / messages.searchGlobal).
+        # Поэтому просим номер обычного пользовательского аккаунта.
+        async def prompt_phone():
+            while True:
+                phone = input("Введите номер телефона аккаунта Telegram "
+                              "(формат +79991234567): ").strip()
+                if phone and not phone.endswith(":"):
+                    return phone
+                print("Бот-токен здесь не подойдёт — нужен номер "
+                      "пользовательского аккаунта.")
+        await self.client.start(phone=prompt_phone)
         return self.client
 
     # ------------------------------------------------------------------
